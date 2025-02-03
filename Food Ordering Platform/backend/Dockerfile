@@ -13,5 +13,3 @@ COPY . .
 # expose port
 EXPOSE 5000
 
-# run app
-CMD ["npm", "run", "dev"]
