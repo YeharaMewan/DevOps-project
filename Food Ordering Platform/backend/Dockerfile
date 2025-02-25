@@ -11,7 +11,7 @@ RUN npm install
 COPY . .
 
 # expose port
-EXPOSE 5000
+EXPOSE 7000
 
 #Build the application
 CMD ["npm", "run","build"]
