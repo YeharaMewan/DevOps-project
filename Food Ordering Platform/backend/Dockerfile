@@ -13,8 +13,10 @@ COPY . .
 
 
 #Build the application
-RUN npm run build
+RUN ["npm", "run", "build"]
+
 # expose port
 EXPOSE 7000
+
 #Start the application
 CMD ["npm", "run", "start"]
