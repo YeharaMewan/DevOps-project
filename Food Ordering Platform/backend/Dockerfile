@@ -13,5 +13,8 @@ COPY . .
 # expose port
 EXPOSE 5000
 
+#Build the application
+CMD ["npm", "run","build"]
+
 #Start the application
-CMD ["npm", "run","dev"]
+CMD ["npm", "run", "satrt"]
