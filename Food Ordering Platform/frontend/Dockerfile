@@ -15,7 +15,7 @@ COPY . .
 RUN ["npm", "run","build"]
 
 # expose port
-EXPOSE 5173
+EXPOSE 3000
 
 # Start the application with --host flag to bind to all interfaces
 CMD ["npm", "run", "preview", "--", "--port", "3000", "--host"]

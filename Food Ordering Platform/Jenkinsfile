@@ -109,7 +109,7 @@ pipeline {
                     // Deploy the frontend
                     sh """
                     sshpass -p '${SERVER_CREDENTIALS_PSW}' ssh -o StrictHostKeyChecking=no root@${REMOTE_HOST} \
-                    'docker run -d -p 5173:5173 --name frontend ${FRONTEND_IMAGE}'
+                    'docker run -d -p 3000:3000 --name frontend ${FRONTEND_IMAGE}'
                     """
                 }
             }
