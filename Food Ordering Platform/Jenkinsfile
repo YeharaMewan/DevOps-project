@@ -5,7 +5,7 @@ pipeline {
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials') // DockerHub credentials
         SERVER_CREDENTIALS = credentials('server-credentials') // Remote server credentials
         BACKEND_IMAGE = "sangeeth108/express-backend"
-        FRONTEND_IMAGE = "sangeeth108/nextjs-frontend"
+        FRONTEND_IMAGE = "sangeeth108/rectjs-frontend"
         REMOTE_HOST = "139.59.78.49"
         DOCKER_BUILDKIT = '0'
     }
