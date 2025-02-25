@@ -17,4 +17,4 @@ EXPOSE 5000
 CMD ["npm", "run","build"]
 
 #Start the application
-CMD ["npm", "run", "satrt"]
+CMD ["npm", "run", "start"]
