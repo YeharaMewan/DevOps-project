@@ -10,9 +10,6 @@ export default defineConfig({
     },
   },
   server: {
-    host: "0.0.0.0", // Allow external connections, including ngrok
-    port: 3000, // Ensure ngrok is forwarding to this port
-    strictPort: true, // Ensures Vite only runs on the specified port
-    cors: true, // Enable CORS if needed
+    host: true, // Bind to all network interfaces
   },
 });
