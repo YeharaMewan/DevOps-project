@@ -28,9 +28,6 @@ pipeline {
         }
 
         stage('Build, Push Backend Image') {
-            when {
-                changeset "Food Ordering Platform/backend/**"
-            }
             steps {
                 dir('Food Ordering Platform/backend') {
                     sh '''
@@ -42,9 +39,6 @@ pipeline {
         }
 
         stage('Build and Push Frontend Image') {
-            when {
-                changeset "Food Ordering Platform/frontend/**"
-            }
             steps {
                 dir('Food Ordering Platform/frontend') {
                     sh '''
@@ -103,7 +97,7 @@ pipeline {
                     // Deploy the backend
                     sh """
                     sshpass -p '${SERVER_CREDENTIALS_PSW}' ssh -o StrictHostKeyChecking=no root@${REMOTE_HOST} \
-                    'docker run -d -p 7000:7000 --name backend ${BACKEND_IMAGE}'
+                    'docker run -d -p 5000:5000 --name backend ${BACKEND_IMAGE}'
                     """
                 }
             }
@@ -121,4 +115,4 @@ pipeline {
             }
         }
     }
-}
+} 
