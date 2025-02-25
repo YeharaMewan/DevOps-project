@@ -11,11 +11,11 @@ RUN npm install
 # copy the files
 COPY . .
 
-# expose port
-EXPOSE 3000
-
 #Build the application
 RUN ["npm", "run","build"]
 
-#Start the application
-CMD ["npm", "run", "preview"]
+# expose port
+EXPOSE 3000
+
+# Start the application with --host flag to bind to all interfaces
+CMD ["npm", "run", "preview", "--", "--port", "3000", "--host"]
