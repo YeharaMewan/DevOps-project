@@ -10,10 +10,8 @@ RUN npm install
 # copy the files
 COPY . .
 
-
-
 #Build the application
-RUN ["npm", "run", "build"]
+#RUN ["npm", "run", "build"]
 
 # expose port
 EXPOSE 7000
