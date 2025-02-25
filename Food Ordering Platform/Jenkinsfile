@@ -97,7 +97,7 @@ pipeline {
                     // Deploy the backend
                     sh """
                     sshpass -p '${SERVER_CREDENTIALS_PSW}' ssh -o StrictHostKeyChecking=no root@${REMOTE_HOST} \
-                    'docker run -d -p 5000:5000 --name backend ${BACKEND_IMAGE}'
+                    'docker run -d -p 7000:7000 --name backend ${BACKEND_IMAGE}'
                     """
                 }
             }
