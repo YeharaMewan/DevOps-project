@@ -4,7 +4,7 @@ pipeline {
     environment {
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials') // DockerHub credentials
         SERVER_CREDENTIALS = credentials('server-credentials') // Remote server credentials
-        BACKEND_IMAGE = "sangeeth108/express-backend"
+        BACKEND_IMAGE = "sangeeth108/expressjs-backend"
         FRONTEND_IMAGE = "sangeeth108/rectjs-frontend"
         REMOTE_HOST = "139.59.78.49"
         DOCKER_BUILDKIT = '0'
@@ -97,7 +97,7 @@ pipeline {
                     // Deploy the backend
                     sh """
                     sshpass -p '${SERVER_CREDENTIALS_PSW}' ssh -o StrictHostKeyChecking=no root@${REMOTE_HOST} \
-                    'docker run -d -p 7000:7000 --name backend ${BACKEND_IMAGE}'
+                    'docker run -d -p 7001:7001 --name backend ${BACKEND_IMAGE}'
                     """
                 }
             }
@@ -109,7 +109,7 @@ pipeline {
                     // Deploy the frontend
                     sh """
                     sshpass -p '${SERVER_CREDENTIALS_PSW}' ssh -o StrictHostKeyChecking=no root@${REMOTE_HOST} \
-                    'docker run -d -p 3000:3000 --name frontend ${FRONTEND_IMAGE}'
+                    'docker run -d -p 3001:3001 --name frontend ${FRONTEND_IMAGE}'
                     """
                 }
             }

@@ -14,7 +14,7 @@ COPY . .
 RUN ["npm", "run", "build"]
 
 # expose port
-EXPOSE 7000
+EXPOSE 7001
 
 #Start the application
 CMD ["npm", "run", "start"]
