@@ -1,0 +1,179 @@
+pipeline {
+    agent any
+    
+    environment {
+        DOCKER_IMAGE_TAG = "${BUILD_NUMBER}"
+        BACKEND_IMAGE = "yeharamewan/backend-service-image:${DOCKER_IMAGE_TAG}"
+        FRONTEND_IMAGE = "yeharamewan/frontend-service-image:${DOCKER_IMAGE_TAG}"
+    }
+    
+    stages {
+        stage('SCM Checkout') {
+            steps {
+                retry(3) {
+                    git branch: 'main', 
+                        url: 'https://github.com/YeharaMewan/DevOps-project'
+                }
+            }
+        }
+        
+        stage('GitHub Hook') {
+            steps {
+                checkout scmGit(
+                    branches: [[name: '*/main']], 
+                    extensions: [], 
+                    userRemoteConfigs: [[
+                        credentialsId: 'git-hub-cred', 
+                        url: 'https://github.com/YeharaMewan/DevOps-project'
+                    ]]
+                )
+            }
+        }
+        
+        stage('Run Docker Resources Before Deployment') {
+            steps {
+                dir('Food Ordering Platform') {
+                    // Continue even if this fails
+                    sh 'docker-compose down || true'
+                    sh 'docker container prune -f'
+                }
+            }
+        }
+        
+        stage('Build and Start Docker Containers') {
+            steps {
+                dir('Food Ordering Platform') {
+                    // Add retry for network issues
+                    retry(2) {
+                        sh 'docker-compose up --build -d'
+                    }
+                }
+                echo 'Docker Compose Build and Start Completed'
+            }
+        }
+        
+        stage('Login to Docker Hub') {
+            steps {
+                withCredentials([
+                    string(
+                        credentialsId: 'yehara-docker-hub-pass', 
+                        variable: 'DOCKER_HUB_PASSWORD'
+                    )
+                ]) {
+                    // Add retry for network issues
+                    retry(3) {
+                        sh '''
+                            echo $DOCKER_HUB_PASSWORD | docker login -u yeharamewan --password-stdin
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('Push Images') {
+            steps {
+                script {
+                    // Push backend image with retry
+                    retry(3) {
+                        sh "docker push ${BACKEND_IMAGE}"
+                    }
+                    
+                    // Push frontend image with retry and longer timeout
+                    retry(3) {
+                        timeout(time: 10, unit: 'MINUTES') {
+                            sh "docker push ${FRONTEND_IMAGE}"
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Access EC2 Instance') {
+            steps {
+                script {
+                    def BUILD_NUMBER_VAR = env.BUILD_NUMBER
+                    
+                    withCredentials([
+                        sshUserPrivateKey(
+                            credentialsId: 'ec2sshid', 
+                            keyFileVariable: 'PRIVATE_KEY_PATH'
+                        )
+                    ]) {
+                        // Install Docker if not already installed
+                        sh '''
+                            ssh -o StrictHostKeyChecking=no -i ${PRIVATE_KEY_PATH} ubuntu@44.203.251.6 << 'EOF'
+                                # Check if Docker is installed
+                                if ! command -v docker &> /dev/null; then
+                                    # Install Docker
+                                    sudo apt-get update
+                                    sudo apt-get install -y ca-certificates curl gnupg
+                                    sudo install -m 0755 -d /etc/apt/keyrings
+                                    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+                                    sudo chmod a+r /etc/apt/keyrings/docker.gpg
+                                    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+                                    sudo apt-get update
+                                    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+                                fi
+                                
+                                # Ensure Docker is running
+                                sudo systemctl start docker
+                                sudo systemctl enable docker
+                                
+                                # Add user to docker group and apply changes
+                                sudo usermod -aG docker ubuntu
+                                sudo chmod 666 /var/run/docker.sock
+                                
+                                # Stop and remove existing container if it exists
+                                docker stop backend_container || true
+                                docker stop frontend_container || true
+                                
+                                # Force prune without confirmation
+                                docker container prune -f
+                                docker image prune -a -f
+                                
+                                
+EOF
+                        '''
+                        
+                        // Deploy and verify containers
+                        sh '''
+                            ssh -o StrictHostKeyChecking=no -i ${PRIVATE_KEY_PATH} ubuntu@44.203.251.6 << EOF
+                                # Pull the latest images
+                                docker pull yeharamewan/backend-service-image:''' + BUILD_NUMBER_VAR + '''
+                                docker pull yeharamewan/frontend-service-image:''' + BUILD_NUMBER_VAR + '''
+                                
+                                # Remove existing containers
+                                docker rm -f backend_container frontend_container || true
+                                
+                                # Run new containers
+                                docker run -d --name backend_container -p 7000:7000 yeharamewan/backend-service-image:''' + BUILD_NUMBER_VAR + '''
+                                docker run -d --name frontend_container -p 3000:3000 yeharamewan/frontend-service-image:''' + BUILD_NUMBER_VAR + '''
+                                
+                                # Verify deployment
+                                echo "Deployed containers:"
+                                docker ps
+                                
+                                echo "Container logs:"
+                                docker logs backend_container
+                                docker logs frontend_container
+                                
+                                # Remove all docker images and containers (commented out)
+                                # docker system prune -a -f
+EOF
+                        '''
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            sh 'docker logout'
+        }
+        failure {
+            echo 'Pipeline failed! Cleaning up...'
+            sh 'docker-compose down || true'
+        }
+    }
+}
