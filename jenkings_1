@@ -1,0 +1,225 @@
+pipeline {
+    agent any
+    
+    environment {
+        DOCKER_IMAGE_TAG = "${BUILD_NUMBER}"
+        BACKEND_IMAGE = "yeharamewan/backend-service-image:${DOCKER_IMAGE_TAG}"
+        FRONTEND_IMAGE = "yeharamewan/frontend-service-image:${DOCKER_IMAGE_TAG}"
+        EC2_HOST = "ubuntu@44.203.251.6"
+    }
+    
+    stages {
+        stage('Preparation') {
+            stages {
+                stage('SCM Checkout') {
+                    steps {
+                        retry(3) {
+                            git branch: 'main', 
+                                url: 'https://github.com/YeharaMewan/DevOps-project'
+                        }
+                    }
+                }
+                
+                stage('GitHub Hook') {
+                    steps {
+                        checkout scmGit(
+                            branches: [[name: '*/main']], 
+                            extensions: [], 
+                            userRemoteConfigs: [[
+                                credentialsId: 'git-hub-cred', 
+                                url: 'https://github.com/YeharaMewan/DevOps-project'
+                            ]]
+                        )
+                    }
+                }
+            }
+        }
+        
+        stage('Local Environment Setup for Docker') {
+            steps {
+                dir('Food Ordering Platform') {
+                    sh 'docker-compose down || true'
+                    sh 'docker container prune -f'
+                }
+            }
+        }
+        
+        stage('Build docker Containers') {
+            steps {
+                dir('Food Ordering Platform') {
+                    retry(2) {
+                        sh 'docker-compose up --build -d'
+                    }
+                }
+                echo 'Docker Compose Build and Start Completed'
+            }
+        }
+        
+        stage('Publish') {
+            stages {
+                stage('Docker Hub Authentication') {
+                    steps {
+                        withCredentials([
+                            string(
+                                credentialsId: 'yehara-docker-hub-pass', 
+                                variable: 'DOCKER_HUB_PASSWORD'
+                            )
+                        ]) {
+                            retry(3) {
+                                sh 'echo $DOCKER_HUB_PASSWORD | docker login -u yeharamewan --password-stdin'
+                            }
+                        }
+                    }
+                }
+                
+                stage('Push Backend Image') {
+                    steps {
+                        retry(3) {
+                            sh "docker push ${BACKEND_IMAGE}"
+                        }
+                    }
+                }
+                
+                stage('Push Frontend Image') {
+                    steps {
+                        retry(3) {
+                            timeout(time: 10, unit: 'MINUTES') {
+                                sh "docker push ${FRONTEND_IMAGE}"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Deployment') {
+            stages {
+                stage('EC2 Preparation') {
+                    steps {
+                        script {
+                            withCredentials([
+                                sshUserPrivateKey(
+                                    credentialsId: 'ec2sshid', 
+                                    keyFileVariable: 'PRIVATE_KEY_PATH'
+                                )
+                            ]) {
+                                sh '''
+                                    ssh -o StrictHostKeyChecking=no -i ${PRIVATE_KEY_PATH} ${EC2_HOST} << 'EOF'
+                                        # Check if Docker is installed
+                                        if ! command -v docker &> /dev/null; then
+                                            # Install Docker
+                                            sudo apt-get update
+                                            sudo apt-get install -y ca-certificates curl gnupg
+                                            sudo install -m 0755 -d /etc/apt/keyrings
+                                            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+                                            sudo chmod a+r /etc/apt/keyrings/docker.gpg
+                                            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+                                            sudo apt-get update
+                                            sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+                                        fi
+                                        
+                                        # Ensure Docker is running
+                                        sudo systemctl start docker
+                                        sudo systemctl enable docker
+                                        
+                                        # Add user to docker group and apply changes
+                                        sudo usermod -aG docker ubuntu
+                                        sudo chmod 666 /var/run/docker.sock
+                                        
+                                        # Clean up existing resources
+                                        docker stop backend_container frontend_container || true
+                                        docker container prune -f
+                                        docker image prune -a -f
+EOF
+                                '''
+                            }
+                        }
+                    }
+                }
+                
+                stage('Pull Images') {
+                    steps {
+                        script {
+                            withCredentials([
+                                sshUserPrivateKey(
+                                    credentialsId: 'ec2sshid', 
+                                    keyFileVariable: 'PRIVATE_KEY_PATH'
+                                )
+                            ]) {
+                                sh '''
+                                    ssh -o StrictHostKeyChecking=no -i ${PRIVATE_KEY_PATH} ${EC2_HOST} << EOF
+                                        # Pull the latest images
+                                        docker pull yeharamewan/backend-service-image:${DOCKER_IMAGE_TAG}
+                                        docker pull yeharamewan/frontend-service-image:${DOCKER_IMAGE_TAG}
+EOF
+                                '''
+                            }
+                        }
+                    }
+                }
+                
+                stage('Deploy Containers') {
+                    steps {
+                        script {
+                            withCredentials([
+                                sshUserPrivateKey(
+                                    credentialsId: 'ec2sshid', 
+                                    keyFileVariable: 'PRIVATE_KEY_PATH'
+                                )
+                            ]) {
+                                sh '''
+                                    ssh -o StrictHostKeyChecking=no -i ${PRIVATE_KEY_PATH} ${EC2_HOST} << EOF
+                                        # Remove existing containers
+                                        docker rm -f backend_container frontend_container || true
+                                        
+                                        # Run new containers
+                                        docker run -d --name backend_container -p 7000:7000 yeharamewan/backend-service-image:${DOCKER_IMAGE_TAG}
+                                        docker run -d --name frontend_container -p 3000:3000 yeharamewan/frontend-service-image:${DOCKER_IMAGE_TAG}
+EOF
+                                '''
+                            }
+                        }
+                    }
+                }
+                
+                stage('Verify Deployment') {
+                    steps {
+                        script {
+                            withCredentials([
+                                sshUserPrivateKey(
+                                    credentialsId: 'ec2sshid', 
+                                    keyFileVariable: 'PRIVATE_KEY_PATH'
+                                )
+                            ]) {
+                                sh '''
+                                    ssh -o StrictHostKeyChecking=no -i ${PRIVATE_KEY_PATH} ${EC2_HOST} << EOF
+                                        # Verify deployment
+                                        echo "Deployed containers:"
+                                        docker ps
+                                        
+                                        echo "Container logs:"
+                                        docker logs backend_container
+                                        docker logs frontend_container
+EOF
+                                '''
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            sh 'docker logout'
+        }
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed! Cleaning up...'
+            sh 'docker-compose down || true'
+        }
+    }
+}
